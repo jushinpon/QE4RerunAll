@@ -38,8 +38,10 @@ my $here_doc =<<"END_MESSAGE";
 #source /opt/intel/oneapi/setvars.sh
 rm -rf pwscf*
 node=$sbatch_para{nodes}
-threads=$sbatch_para{threads}
+#threads=$sbatch_para{threads}
 processors=\$(nproc)
+threads=\$(nproc)
+
 np=\$((\$node*\$processors/\$threads))
 export OMP_NUM_THREADS=\$threads
 #the following two are for AMD CPU if slurm chooses for you!!

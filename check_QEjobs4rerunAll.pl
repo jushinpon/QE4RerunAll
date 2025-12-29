@@ -14,7 +14,8 @@ $whoami =~ s/^\s+|\s+$//g;
 my $currentPath = getcwd();# dir for all scripts
 #my $source_folder = "$currentPath/QE_trimmed4relax";#for vc-md
 #my $source_folder = "$currentPath/QEall_set";#for vc-relax
-my $source_folder = "/home/jsp1/AlP/from195/";#for vc-relax
+#my $source_folder = "/home/jsp1/AlP/from195/";#for vc-relax
+my $source_folder = "/home/jsp1/AlP/QE_from_MatCld/QEall_set/";#for vc-relax
 my @all_QEin = `find $source_folder -type f -name "*.in"`;#keep element info`;
 map { s/^\s+|\s+$//g; } @all_QEin;
 
