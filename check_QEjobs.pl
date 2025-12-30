@@ -13,8 +13,12 @@ my $whoami = `whoami`;#get username first
 $whoami =~ s/^\s+|\s+$//g;
 my $currentPath = getcwd();# dir for all scripts
 #my $source_folder = "$currentPath/QE_trimmed4relax";#for vc-md
-#my $source_folder = "$currentPath/QEall_set";#for vc-relax
-my $source_folder = "/home/jsp1/AlP/from195/";#for vc-relax
+
+########## source folder you need to assign
+#my $source_folder = "$currentPath/shear_label/*/labelled";#for vc-relax
+my $source_folder = "/home/jsp/SnPbTe_alloys/dp_train_label/thermo_label/*/labelled/";#for vc-relax
+
+
 my @all_QEin = `find $source_folder -type f -name "*.in"`;#keep element info`;
 map { s/^\s+|\s+$//g; } @all_QEin;
 
@@ -25,6 +29,65 @@ open(my $FH, "> QEjobs_status/Done.txt") or die $!;
 open(my $FH1, "> QEjobs_status/Queueing.txt") or die $!;
 open(my $FH2, "> QEjobs_status/Running.txt") or die $!;
 open(my $FH3, "> QEjobs_status/Dead.txt") or die $!;
+
+#my @all_paths;
+#
+#for my $f (@all_QEin){ 
+#    my $dir = `dirname $f`;#get path
+#    $dir =~ s/^\s+|\s+$//;
+#    my $basename = `basename $f`;
+#    $basename =~ s/^\s+|\s+$//;
+#    $basename =~ s/\.in//g;
+#    my $sh_file = "$dir/$basename.sh";
+#    push @all_paths, $sh_file;
+#}
+#
+#
+##StdOut=/home/jsp/SnPbTe_alloys/dp_train_label/thermo_label/Sn9Pb23Te32-T300-P0-lmpT10to1210-P0-R600000/labelled/lmp_96000.sout
+##scontrol show job jobid
+#my @jobname_R = `squeue -u $whoami -o "%A %j %u %N %T %M"|grep RUNNING|grep -v JOBID|awk '{print  \$2}'`;#jobnames
+my @jobid_R = `squeue -u $whoami -o "%A %j %u %N %T %M"|grep RUNNING|grep -v JOBID|awk '{print  \$1}'`;#jobid
+#map { s/^\s+|\s+$//g; } @jobname_R;
+map { s/^\s+|\s+$//g; } @jobid_R;
+print "Total running jobs: ".@jobid_R."\n";
+
+my @running_path;#jobs are currently running
+my %path2id;#jobs are currently running
+for my $i (@jobid_R){
+    my $temp =  `scontrol show job $i|grep StdOut=|awk -F'=' '{print \$2}'`;
+    $temp =~ s/^\s+|\s+$//g;
+    push @running_path,$temp; 
+    $path2id{$temp} = $i;               
+}
+#for my $p (keys %path2id){
+#    print "$p => $path2id{$p}\n";
+#}
+#print "Total running job output paths: ".@running_path."\n";
+#die;
+#            
+#my @jobname_Q = `squeue -u $whoami -o "%A %j %u %N %T %M"|grep -v RUNNING|grep -v JOBID|awk '{print  \$2}'`;#jobnames
+my @jobid_Q = `squeue -u $whoami -o "%A %j %u %N %T %M"|grep -v RUNNING|grep -v JOBID|awk '{print  \$1}'`;#jobid
+#map { s/^\s+|\s+$//g; } @jobname_Q;
+map { s/^\s+|\s+$//g; } @jobid_Q;
+my @queuing_path;#jobs are currently running
+for my $i (@jobid_Q){
+    my $temp =  `scontrol show job $i|grep StdOut=|awk -F'=' '{print \$2}'`;
+    $temp =~ s/^\s+|\s+$//g;
+    push @queuing_path,$temp;                
+}
+#my @All_jobid = (@jobid_R,@jobid_Q);
+#my @all_out_path; #slurm job output path
+#for (@all_jobid){
+#    my $temp = `scontrol `
+#
+#}
+#
+#my @sout_not_in;
+#for (@all_paths){
+#    print "$_\n";
+#
+#}
+#die;
 
 #print FH $here_doc;
 my $doneNu = 0;
@@ -41,23 +104,22 @@ for my $f (@all_QEin){
     $calculation =~ s/^\s+|\s+$//;
     die "No calculation type in $f\n" unless($calculation);
 
-    my $nstep = `grep nstep $f|awk '{print \$NF}'`;
-    $nstep =~ s/^\s+|\s+$//;
-    die "No nstep number in $f\n" unless($nstep);
-
     my $dir = `dirname $f`;#get path
     $dir =~ s/^\s+|\s+$//;
-    
-    my @sh = `find $dir -type f -name "*.sh"`;#QE output file`;
-    map { s/^\s+|\s+$//g; } @sh;
-    die "QE output number is not equal to 1 in $dir\n" if(@sh != 1);
-    open(my $sh, "< $sh[0]") or die $!;
+    my $basename = `basename $f`;
+    $basename =~ s/^\s+|\s+$//;
+    $basename =~ s/\.in//g; 
+
+    my $sh_file = "$dir/$basename.sh";
+    #print "$sh_file\n";
+    #die;
+    open(my $sh, "< $sh_file") or die $!;
     my @tempsh = <$sh>;
     close($sh);
     #get output and job name of a QE job
     my $sout;
     my $jobname;
-
+    #get output filename and job name
     for (@tempsh){
         if(m/#SBATCH\s+--output=\s*(.+)\s*!?/){
             chomp $1;
@@ -73,39 +135,31 @@ for my $f (@all_QEin){
 
     if (-e "$dir/$sout"){#sout exists
         my @mark = `grep '!    total energy' $dir/$sout`;
-        my @jobdone = `grep 'JOB DONE' $dir/$sout`;
         map { s/^\s+|\s+$//g; } @mark;
         #scf cases
         if($calculation=~m/scf/ and @mark ==1){
             $doneNu++;
             print $FH "$f\n";
+            #print "$f\n";
         }
-        elsif($calculation=~m/scf/ and @mark != 1){
+        elsif($calculation=~m/scf/ and @mark != 1){#could be running or dead
             #squeue -o "%A %j %u %N %T %M"
             #398520 jobLi7Al6_mp-1212183-T300-P0 shaohan  PENDING 0:00
             #398523 jobS_mp-77-T50-P0 shaohan node[10,18] RUNNING 1-04:52:12
-            my @submitted = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$2}'`;#jobnames
-            my @submitted1 = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$1}'`;#jobid
-            map { s/^\s+|\s+$//g; } @submitted;
-            map { s/^\s+|\s+$//g; } @submitted1;
-            my %jobname2id;
-            @jobname2id{@submitted} = @submitted1;            
-            #for my $t (@submitted1){
-            #    $t =~ m/(\d+)\s+(.+)/;
-            #    chomp ($1,$2);
-            #    $jobname2id{$2} = $1;
-            #}
-            if($jobname ~~ @submitted){
-                my $elapsed = `squeue|grep $jobname2id{$jobname}`;
+           # my @jobid_R = `squeue -u $whoami -o "%A %j %u %N %T %M"|grep RUNNING|grep -v JOBID|awk '{print  \$1}'`;#running jobid
+           # map { s/^\s+|\s+$//g; } @jobid_R;
+            #JobId=412361 JobName=lmp_102000
+           
+
+            my $full_path = "$dir/$sout";
+                        
+            if($full_path ~~ @running_path){
+                my $elapsed = `squeue -u $whoami -o "%A %j %u %N %T %M"|grep $path2id{$full_path}|grep RUNNING`;
                 $elapsed =~ s/^\s+|\s+$//g;
                # if($elapsed){
                     $runNu++;
-                    print $FH2 "$elapsed for scf:\n$f\n";
-               # }
-               # else{
-               #     $deadNu++;
-               #     print $FH3 "$f\n";
-               # }
+                    print $FH2 "$elapsed for scf:\n$f\n";                    
+                    #print "$elapsed for scf:\n$f\n";               
             }
             else{
                 $deadNu++;
@@ -113,85 +167,13 @@ for my $f (@all_QEin){
             }
         }
 
-        #md cases
-        if($calculation=~m/md/ and @mark == $nstep){
-            $doneNu++;
-            print $FH "$f\n";
-        }
-        elsif($calculation=~m/md/ and @mark < $nstep){
-            #squeue -o "%A %j %u %N %T %M"
-            #398520 jobLi7Al6_mp-1212183-T300-P0 shaohan  PENDING 0:00
-            #398523 jobS_mp-77-T50-P0 shaohan node[10,18] RUNNING 1-04:52:12
-            my @submitted = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$2}'`;#jobnames
-            my @submitted1 = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$1}'`;#jobid
-            map { s/^\s+|\s+$//g; } @submitted;
-            map { s/^\s+|\s+$//g; } @submitted1;
-            my %jobname2id;
-            @jobname2id{@submitted} = @submitted1;
-
-            if($jobname ~~ @submitted){#running
-                my $elapsed = `squeue|grep $jobname2id{$jobname}`;
-                #if($elapsed){
-                    $elapsed =~ s/^\s+|\s+$//g;                
-                    $runNu++;
-                    my $temp = @mark."/".$nstep;
-                    print $FH2 "**$elapsed\n $temp: in $f\n\n";
-                #}
-                #else{
-                #    $deadNu++;
-                #    my $temp = @mark."/".$nstep;
-                #    print $FH3 "$temp: $f !\n";#for awk    
-                #}
-            }
-            else{
-                $deadNu++;
-                my $temp = @mark."/".$nstep;
-                print $FH3 "$temp: $f !\n";#for awk
-            }
-        }
-
-        #relax cases
-
-        if($calculation=~m/relax/ and @jobdone){
-            $doneNu++;
-            print $FH "$f\n";
-        }
-        elsif($calculation=~m/relax/ and @jobdone == 0){
-            #squeue -o "%A %j %u %N %T %M"
-            #398520 jobLi7Al6_mp-1212183-T300-P0 shaohan  PENDING 0:00
-            #398523 jobS_mp-77-T50-P0 shaohan node[10,18] RUNNING 1-04:52:12
-            my @submitted = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$2}'`;#jobnames
-            my @submitted1 = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$1}'`;#jobid
-            map { s/^\s+|\s+$//g; } @submitted;
-            map { s/^\s+|\s+$//g; } @submitted1;
-            my %jobname2id;
-            @jobname2id{@submitted} = @submitted1;
-
-            if($jobname ~~ @submitted){#running
-                my $elapsed = `squeue|grep $jobname2id{$jobname}`;
-                #if($elapsed){
-                    $elapsed =~ s/^\s+|\s+$//g;                
-                    $runNu++;
-                    my $temp = @mark."/".$nstep;
-                    print $FH2 "**$elapsed\n $temp: in $f\n\n";
-                #}
-                #else{
-                #    $deadNu++;
-                #    my $temp = @mark."/".$nstep;
-                #    print $FH3 "$temp: $f !\n";#for awk    
-                #}
-            }
-            else{
-                $deadNu++;
-                my $temp = @mark."/".$nstep;
-                print $FH3 "$temp: $f !\n";#for awk
-            }
-        }
+        
     }
-    else{#no sout exists, in queue
-         my @submitted = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$2}'`;#jobnames
-            map { s/^\s+|\s+$//g; } @submitted;
-        if($jobname ~~ @submitted){#queneing
+    else{#no sout exists, in queue or not submitted
+        
+        my $full_path = "$dir/$sout";            
+        
+        if($full_path ~~ @queuing_path){#queneing
             $queNu++;
             print $FH1 "$f\n";
         }
@@ -247,7 +229,3 @@ print "\n";
 print "***The last line (completed jobs/total jobs) of QEjobs_status/Done.txt!\n";
 system("cat QEjobs_status/Done.txt|tail -n 1 ");
 print "+++++Check End+++++++\n";
-
-
-
-

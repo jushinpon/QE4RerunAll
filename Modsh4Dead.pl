@@ -34,9 +34,10 @@ my $here_doc =<<"END_MESSAGE";
 #SBATCH --partition=$sbatch_para{partition}
 ##SBATCH --ntasks-per-node=12
 ##SBATCH --exclude=node23
+#SBATCH --reservation=script_test
 
 #source /opt/intel/oneapi/setvars.sh
-rm -rf pwscf*
+rm -rf pwscf*231
 node=$sbatch_para{nodes}
 #threads=$sbatch_para{threads}
 processors=\$(nproc)
