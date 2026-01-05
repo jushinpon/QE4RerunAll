@@ -163,7 +163,7 @@ for my $f (@all_QEin){
             }
             else{
                 $deadNu++;
-                print $FH3 "$f\n";
+                print $FH3 "0/0: $f\n";
             }
         }
 
