@@ -16,12 +16,14 @@ my $currentPath = getcwd();# dir for all scripts
 
 ########## source folder you need to assign
 #my $source_folder = "$currentPath/shear_label/*/labelled";#for vc-relax
-my $source_folder = "/home/jsp/SnPbTe_alloys/dp_train_label/thermo_label/*/labelled/";#for vc-relax
+#my $source_folder = "/home/jsp1/AlP/QE_from_MatCld/QEall_set";#for vc-relax
+my $source_folder = "/home/jsp1/AlP/from195/";#for vc-relax
 
 
 my @all_QEin = `find $source_folder -type f -name "*.in"`;#keep element info`;
 map { s/^\s+|\s+$//g; } @all_QEin;
-
+#print "Total QE input files: "."@all_QEin"."\n";
+#die;
 `rm -rf QEjobs_status`;
 `mkdir -p QEjobs_status`;
 
@@ -104,6 +106,10 @@ for my $f (@all_QEin){
     $calculation =~ s/^\s+|\s+$//;
     die "No calculation type in $f\n" unless($calculation);
 
+    my $nstep = `grep nstep $f|awk '{print \$NF}'`;
+    $nstep =~ s/^\s+|\s+$//;
+    die "No nstep number in $f\n" unless($nstep);
+
     my $dir = `dirname $f`;#get path
     $dir =~ s/^\s+|\s+$//;
     my $basename = `basename $f`;
@@ -136,6 +142,7 @@ for my $f (@all_QEin){
     if (-e "$dir/$sout"){#sout exists
         my @mark = `grep '!    total energy' $dir/$sout`;
         map { s/^\s+|\s+$//g; } @mark;
+        #print "$f: calculation=$calculation, !marks=".@mark."\n";
         #scf cases
         if($calculation=~m/scf/ and @mark ==1){
             $doneNu++;
@@ -167,6 +174,43 @@ for my $f (@all_QEin){
             }
         }
 
+        #md cases
+        if($calculation=~m/(md|relax)/ and @mark == $nstep){
+            $doneNu++;
+            print $FH "$f\n";
+        }
+        elsif($calculation=~m/(md|relax)/ and @mark < $nstep){
+            #squeue -o "%A %j %u %N %T %M"
+            #398520 jobLi7Al6_mp-1212183-T300-P0 shaohan  PENDING 0:00
+            #398523 jobS_mp-77-T50-P0 shaohan node[10,18] RUNNING 1-04:52:12
+            my @submitted = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$2}'`;#jobnames
+            my @submitted1 = `squeue -u $whoami -o "%A %j %u %N %T %M"|awk '{print  \$1}'`;#jobid
+            map { s/^\s+|\s+$//g; } @submitted;
+            map { s/^\s+|\s+$//g; } @submitted1;
+            my %jobname2id;
+            @jobname2id{@submitted} = @submitted1;
+
+            if($jobname ~~ @submitted){#running
+                my $elapsed = `squeue|grep $jobname2id{$jobname}`;
+                #if($elapsed){
+                    $elapsed =~ s/^\s+|\s+$//g;                
+                    $runNu++;
+                    my $temp = @mark."/".$nstep;
+                    print $FH2 "**$elapsed\n $temp: in $f\n\n";
+                #}
+                #else{
+                #    $deadNu++;
+                #    my $temp = @mark."/".$nstep;
+                #    print $FH3 "$temp: $f !\n";#for awk    
+                #}
+            }
+            else{
+                $deadNu++;
+                my $temp = @mark."/".$nstep;
+                print $FH3 "$temp: $f !\n";#for awk
+            }
+        }
+
         
     }
     else{#no sout exists, in queue or not submitted
@@ -182,6 +226,9 @@ for my $f (@all_QEin){
             print $FH3 "0/0: $f not submitted!\n";#for awk
         }
     }
+
+    #print "Checked: $f\n";
+    #print "Done: $doneNu, Running: $runNu, Queuing: $queNu, Dead: $deadNu\n";
 
 }
 #case fraction
